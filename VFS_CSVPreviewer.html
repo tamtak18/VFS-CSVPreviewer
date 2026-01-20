@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VFS CSV-Previewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            /* VFS Standard Theme Colors */
+            --bg-dark: #0a0b0c;
+            --panel-dark: #151719;
+            --text-main: #d1d2d3;
+            --border-gray: #2d3135;
+            --vfs-gold: #c5a059;
+            --vfs-silver: #a8adb3;
+            --input-bg: #0a0b0c;
+            
+            /* UI Colors */
+            --color-normal: #2a7a4a;
+            --color-warning: #c58228;
+            --color-danger: #a93226;
+        }
+
+        /* Light Mode Support */
+        body.light-mode {
+            --bg-dark: #f4f7f6;
+            --panel-dark: #ffffff;
+            --text-main: #2c3e50;
+            --border-gray: #dee2e6;
+            --vfs-gold: #e67e22;
+            --vfs-silver: #7f8c8d;
+            --input-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            transition: 0.3s;
+        }
+
+        /* VFS Header Component */
+        header {
+            background: linear-gradient(to right, #1a1c1e, #0a0b0c);
+            border-bottom: 1px solid var(--vfs-gold);
+            padding: 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .logo-area { display: flex; align-items: center; gap: 12px; }
+        .vfs-logo-box {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, var(--vfs-silver), var(--vfs-gold));
+            border-radius: 2px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; color: #000; font-size: 0.8rem;
+            box-shadow: 0 0 10px rgba(197, 160, 89, 0.3);
+        }
+
+        .brand-info { display: flex; flex-direction: column; }
+        .product-name { font-weight: bold; font-size: 1rem; color: var(--vfs-gold); letter-spacing: 0.5px; }
+        .brand-subname { font-size: 0.6rem; color: var(--vfs-silver); letter-spacing: 1.5px; opacity: 0.7; }
+
+        .container { flex: 1; display: flex; flex-direction: column; padding: 15px; overflow: hidden; gap: 10px; }
+
+        /* VFS Panel Styles */
+        .vfs-panel {
+            background: var(--panel-dark);
+            border: 1px solid var(--border-gray);
+            padding: 12px;
+            border-radius: 2px;
+        }
+
+        .search-panel { border-color: var(--vfs-gold); box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
+        .search-results { max-height: 120px; overflow-y: auto; margin-top: 8px; font-size: 0.75rem; background: var(--input-bg); }
+        .result-item { padding: 6px 12px; border-bottom: 1px solid var(--border-gray); cursor: pointer; display: flex; justify-content: space-between; }
+        .result-item:hover { background: var(--vfs-gold); color: #000; }
+
+        .upload-section { display: flex; align-items: center; gap: 15px; font-size: 0.8rem; }
+
+        /* Tab Control */
+        .tabs { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 0; }
+        .tab {
+            padding: 8px 16px; cursor: pointer; background: #1a1c1e;
+            border: 1px solid var(--border-gray); font-size: 0.75rem; color: var(--vfs-silver);
+            white-space: nowrap; transition: 0.2s;
+        }
+        .tab.active { background: var(--vfs-gold); color: #000; border-color: var(--vfs-gold); font-weight: bold; }
+
+        /* Table Components */
+        .table-wrapper { flex: 1; overflow: auto; border: 1px solid var(--border-gray); background: var(--panel-dark); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; table-layout: fixed; }
+        th {
+            background: #1a1c1e; color: var(--vfs-gold); position: sticky; top: 0; z-index: 10;
+            padding: 10px; border: 1px solid var(--border-gray); text-align: left; font-weight: bold;
+        }
+        td { padding: 8px 10px; border: 1px solid var(--border-gray); word-wrap: break-word; vertical-align: top; }
+        tr:nth-child(even) { background-color: rgba(255,255,255,0.02); }
+
+        /* Controls */
+        .btn {
+            padding: 6px 14px; background-color: transparent; border: 1px solid var(--vfs-gold);
+            color: var(--vfs-gold); cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s;
+        }
+        .btn:hover { background-color: var(--vfs-gold); color: #000; }
+        .btn-theme { border-color: var(--vfs-silver); color: var(--vfs-silver); }
+
+        input { background: var(--input-bg); border: 1px solid var(--border-gray); color: #fff; padding: 6px 10px; border-radius: 0; }
+        .highlight { background-color: rgba(197, 160, 89, 0.4); color: #fff; }
+        .hidden { display: none; }
+
+        /* Scrollbar Optimization */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--border-gray); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--vfs-silver); }
+    </style>
+</head>
+<body class="dark-mode">
+
+<header>
+    <div class="logo-area">
+        <div class="vfs-logo-box">VFS</div>
+        <div class="brand-info">
+            <div class="product-name">VFS CSV-Previewer</div>
+            <div class="brand-subname">VANILLA FIELD SOFTHOUSE</div>
+        </div>
+    </div>
+    <div class="header-controls">
+        <button class="btn btn-theme" onclick="toggleTheme()">THEME</button>
+    </div>
+</header>
+
+<div class="container">
+    <div id="searchSection" class="vfs-panel search-panel hidden">
+        <div style="display:flex; gap:10px; align-items:center;">
+            <label style="color:var(--vfs-gold); font-size:0.75rem; font-weight:bold;">GLOBAL SEARCH:</label>
+            <input type="text" id="globalSearchInput" placeholder="全ファイルから検索..." style="flex-grow:1">
+            <button class="btn" onclick="runGlobalSearch()">全件スキャン開始</button>
+        </div>
+        <div id="globalResults" class="search-results"></div>
+    </div>
+
+    <div class="vfs-panel upload-section">
+        <input type="file" id="fileInput" accept=".csv" multiple />
+        <span style="opacity: 0.5;">Select CSV files to initialize workspace.</span>
+    </div>
+
+    <div id="tabContainer" class="tabs"></div>
+    
+    <div id="infoPanel" class="vfs-panel hidden">
+        <div id="mainControls" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button class="btn" style="border-color:#555; color:#888" onclick="jumpTo(0)">TOP</button>
+            <input type="number" id="startRow" value="0" style="width: 80px;">
+            <button class="btn" onclick="loadCurrentTabCsv()">GOTO</button>
+            <button class="btn" style="border-color:#555; color:#888" onclick="movePage(50)">NEXT</button>
+            
+            <div style="flex-grow:1; font-size:0.75rem; letter-spacing:1px; color:var(--vfs-silver);">
+                RECORDS: <span id="recordCount" style="color:var(--vfs-gold)">--</span> | 
+                SIZE: <span id="fileSize" style="color:var(--vfs-gold)">--</span>
+            </div>
+            
+            <button class="btn" style="border-color:var(--color-normal); color:var(--color-normal)" onclick="exportToExcel()">EXCEL EXPORT</button>
+        </div>
+        <div id="columnManager" class="hidden" style="font-size:0.75rem; padding-top:10px; border-top:1px solid var(--border-gray); margin-top:10px;">
+            <span style="color:var(--color-danger); font-weight:bold; margin-right:10px;">HIDDEN COLUMNS:</span> <span id="hiddenList"></span>
+        </div>
+    </div>
+
+    <div id="mainContent" class="table-wrapper hidden">
+        <table id="dataTable"><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table>
+    </div>
+</div>
+
+<script>
+    let filesData = {}; let activeFileId = null;
+    function toggleTheme() { document.body.classList.toggle('light-mode'); }
+
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+        const files = Array.from(e.target.files).filter(f => f.name.endsWith('.csv'));
+        files.forEach(file => {
+            const fileId = "id_" + Math.random().toString(36).substr(2, 9);
+            filesData[fileId] = { file, sizeBytes: file.size, startRow: 0, totalRows: 0, hiddenColumns: new Set(), headers: [] };
+            createTab(fileId, file.name);
+            countTotalRows(fileId);
+            document.getElementById('searchSection').classList.remove('hidden');
+        });
+    });
+
+    function createTab(id, name) {
+        const tab = document.createElement('div'); tab.className = 'tab'; tab.id = 'tab_' + id;
+        tab.innerHTML = `${name.length > 20 ? name.substr(0,17)+'...' : name} <span onclick="closeTab(event,'${id}')" style="color:var(--color-danger); margin-left:8px;">×</span>`;
+        tab.onclick = () => switchTab(id);
+        document.getElementById('tabContainer').appendChild(tab);
+    }
+
+    function switchTab(id, targetRow = 0) {
+        activeFileId = id;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab_' + id).classList.add('active');
+        document.getElementById('startRow').value = targetRow;
+        document.getElementById('infoPanel').classList.remove('hidden');
+        document.getElementById('mainContent').classList.remove('hidden');
+        loadCurrentTabCsv();
+    }
+
+    function runGlobalSearch() {
+        const query = document.getElementById('globalSearchInput').value.toLowerCase();
+        const resultsDiv = document.getElementById('globalResults');
+        resultsDiv.innerHTML = '<div style="padding:10px;">スキャン中...</div>';
+        if (!query) return;
+        resultsDiv.innerHTML = '';
+
+        Object.keys(filesData).forEach(id => {
+            let rowIdx = 0;
+            Papa.parse(filesData[id].file, {
+                header: false, worker: true,
+                step: function(row) {
+                    const line = row.data.join(" ").toLowerCase();
+                    if (line.includes(query)) {
+                        const item = document.createElement('div');
+                        item.className = 'result-item';
+                        item.innerHTML = `<span><strong>${filesData[id].file.name}</strong> (行: ${rowIdx})</span> <span style="opacity:0.6">${row.data.slice(0,3).join(", ")}...</span>`;
+                        const jumpRow = rowIdx === 0 ? 0 : rowIdx - 1;
+                        item.onclick = () => switchTab(id, jumpRow);
+                        resultsDiv.appendChild(item);
+                    }
+                    rowIdx++;
+                },
+                complete: () => { if(resultsDiv.innerHTML === '') resultsDiv.innerHTML = '<div style="padding:10px; opacity:0.5;">一致するレコードはありません。</div>'; }
+            });
+        });
+    }
+
+    function loadCurrentTabCsv() {
+        const fData = filesData[activeFileId];
+        const start = parseInt(document.getElementById('startRow').value) || 0;
+        let rowCount = 0; let dataRows = [];
+        Papa.parse(fData.file, {
+            header: true, skipEmptyLines: true, dynamicTyping: true,
+            step: function(results, parser) {
+                if (rowCount >= start && rowCount < start + 50) dataRows.push(results.data);
+                if (rowCount >= start + 50) parser.abort();
+                rowCount++;
+            },
+            complete: function() {
+                if (dataRows.length > 0) {
+                    fData.headers = Object.keys(dataRows[0]);
+                    renderTable(dataRows);
+                    updateInfoDisplay(start);
+                }
+            }
+        });
+    }
+
+    function renderTable(data) {
+        const fData = filesData[activeFileId];
+        const head = document.getElementById('tableHead'); const body = document.getElementById('tableBody');
+        head.innerHTML = ''; body.innerHTML = '';
+        const trH = document.createElement('tr');
+        fData.headers.forEach((h, i) => {
+            const th = document.createElement('th'); 
+            th.innerHTML = `${h}`;
+            if (fData.hiddenColumns.has(i)) th.style.display = 'none';
+            th.onclick = () => toggleColumn(i);
+            trH.appendChild(th);
+        });
+        head.appendChild(trH);
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            fData.headers.forEach((h, i) => {
+                const td = document.createElement('td'); td.textContent = row[h] ?? '';
+                if (fData.hiddenColumns.has(i)) td.style.display = 'none';
+                tr.appendChild(td);
+            });
+            body.appendChild(tr);
+        });
+    }
+
+    function toggleColumn(i) {
+        const fData = filesData[activeFileId];
+        fData.hiddenColumns.has(i) ? fData.hiddenColumns.delete(i) : fData.hiddenColumns.add(i);
+        loadCurrentTabCsv();
+    }
+
+    function updateInfoDisplay(start) {
+        const fData = filesData[activeFileId];
+        document.getElementById('recordCount').textContent = fData.totalRows.toLocaleString();
+        document.getElementById('fileSize').textContent = (fData.sizeBytes / (1024*1024)).toFixed(2) + " MB";
+        const hList = document.getElementById('hiddenList');
+        const manager = document.getElementById('columnManager');
+        if (fData.hiddenColumns.size > 0) {
+            manager.classList.remove('hidden');
+            hList.innerHTML = Array.from(fData.hiddenColumns).map(idx => `<span onclick="toggleColumn(${idx})" style="background:var(--color-danger); color:#fff; padding:2px 8px; border-radius:2px; margin-right:5px; cursor:pointer; font-size:0.7rem;">${fData.headers[idx]}</span>`).join('');
+        } else manager.classList.add('hidden');
+    }
+
+    function countTotalRows(id) {
+        let count = 0;
+        Papa.parse(filesData[id].file, { worker: true, step: () => count++, complete: () => { filesData[id].totalRows = count - 1; if(activeFileId===id) updateInfoDisplay(0); }});
+    }
+
+    function movePage(s) { document.getElementById('startRow').value = Math.max(0, parseInt(document.getElementById('startRow').value) + s); loadCurrentTabCsv(); }
+    function jumpTo(r) { document.getElementById('startRow').value = r; loadCurrentTabCsv(); }
+    function closeTab(e, id) { e.stopPropagation(); delete filesData[id]; document.getElementById('tab_'+id).remove(); if(activeFileId===id) { document.getElementById('infoPanel').classList.add('hidden'); document.getElementById('mainContent').classList.add('hidden'); } }
+    function exportToExcel() {
+        const fData = filesData[activeFileId];
+        Papa.parse(fData.file, {
+            header: true, skipEmptyLines: true,
+            complete: function(results) {
+                const ws = XLSX.utils.json_to_sheet(results.data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "PreviewData");
+                XLSX.writeFile(wb, fData.file.name.replace(".csv", ".xlsx"));
+            }
+        });
+    }
+</script>
+</body>
+</html>
